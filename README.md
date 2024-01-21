@@ -84,3 +84,213 @@ As organizações que executam contêineres Linux em produção podem realizar t
     - **Hosts atômicos imutáveis**: uma ideia para aprimorar a experiência no Docker são os hosts atômicos imutáveis, que permitem baixar uma nova imagem fina do sistema operacional e reinicializar o servidor, revertendo facilmente em caso de problemas. Isso é aplicado em distribuições de host atômico baseadas em Linux, como Fedora CoreOS da Red Hat e Bottlerocket OS, proporcionando alta consistência e resiliência para toda a pilha de software. As características incluem uma pegada mínima, suporte a contêineres Linux e Docker, e atualizações e reversões atômicas do sistema operacional controladas por ferramentas de orquestração multihost.
 
     - **Ferramentas adicionais**: o Docker possui um amplo ecossistema de ferramentas que oferecem funcionalidades adicionais, como monitoramento com Prometheus e orquestração com Ansible, que aproveitam a API Docker. Além disso, existem plug-ins que atendem a uma especificação para interagir com o Docker.
+
+
+### Ubunto
+    ```
+        docker container run --rm -it docker.io/ubuntu:latest bash
+
+    ```
+
+### Fedora 
+    ```
+        docker run --rm -it docker.io/fedora:latest bash
+
+    ```
+
+### Alpine Linux 
+    ```
+        docker container run --rm -it docker.io/alpine:latest bash
+        
+    ```
+-  Caso a imagem já exista:
+    ```
+        docker  run --rm -it alpine:latest 
+    ```
+
+[docker.io/ubuntu:latest], [docker.io/fedora:latest] e [docker.io/alpine:latest] todos representam um repositório de imagens Docker, seguido por um nome de imagem e uma tag de imagem.
+
+
+### Servidor Docker
+Para executar o daemon Docker manualmente em um sistema Linux:
+```
+    sudo  dockerd  -H  unix:///var/run/docker.sock  \ --config-file  /etc/docker/daemon.json
+```
+É importante observar que esta seção pressupõe que  está no servidor Linux real ou na VM que está executando o daemon Docker. Se estiver usando o Docker Desktop no Windows ou Mac, não será capaz de interagir facilmente com o executável dockerd, pois ele está intencionalmente oculto do usuário final.
+Este comando inicia o daemon Docker, cria e escuta um soquete de domínio Unix (-H unix:///var/run/docker.sock) e lê o restante da configuração de /etc/docker/daemon.json.
+
+No docker desktop podemos editar as configuração do daemon do Docker em ** Preferências… → Docker Engine**.
+
+### Imagens Docker 
+ As imagens Docker ou Open Container Initiative (OCI) fornecem a base para tudo o que  implantará e executará com o Docker. Para iniciar um contêiner, deve baixar uma imagem pública ou criar a sua própria. É possivel  pensar na imagem como um único ativo que representa principalmente o sistema de arquivos do contêiner. No entanto, na realidade, cada imagem consiste em uma ou mais camadas de sistema de arquivos vinculadas que geralmente possuem um mapeamento direto um para um para cada etapa de construção usada para criar aquela imagem.
+ Dockerfile é um arquivo descreve todas as etapas necessárias para criar uma imagem e geralmente está contido no diretório raiz do repositório de código-fonte do aplicativo.
+
+#### Folder docker-node-hello
+ Um Dockerfile típico pode ser parecido com o mostrado aqui, que cria um contêiner para um aplicativo baseado em Node.js:
+ ```
+    FROM node:18.13.0
+
+    ARG email="anna@example.com"
+    LABEL "maintainer"=$email
+    LABEL "rating"="Five Stars" "class"="First Class"
+
+    USER root
+
+    ENV AP /data/app
+    ENV SCPATH /etc/supervisor/conf.d
+
+    RUN apt-get -y update
+
+    # The daemons
+    RUN apt-get -y install supervisor
+    RUN mkdir -p /var/log/supervisor
+
+    # Supervisor Configuration
+    COPY ./supervisord/conf.d/* $SCPATH/
+
+    # Application Code
+    COPY *.js* $AP/
+
+    WORKDIR $AP
+
+    RUN npm install
+
+    CMD ["supervisord", "-n"]
+    ```
+
+Cada linha em um Dockerfile cria uma nova camada de imagem que é armazenada pelo Docker. Esta camada contém todas as alterações resultantes da emissão desse comando. Isso significa que quando você cria novas imagens, o Docker só precisará construir camadas que se desviem das construções anteriores: você pode reutilizar todas as camadas que não foram alteradas.
+No Docker Hub é posivél obter imagens oficiais.
+A imagem base a seguir fornecerá uma imagem do Ubuntu Linux executando o Node 18.13.0
+    ```
+    FROM docker.io/node:18.13.0
+    ```
+
+O parâmetro **ARG** fornece uma maneira de definir variáveis ​​e seus valores padrão, que estão disponíveis apenas durante o processo de construção da imagem:
+    ```ARG email="email@example.com````
+
+A aplicação de rótulos **LABEL** a imagens e contêineres permite adicionar metadados por meio de pares chave/valor. Que podem ser usados ​​posteriormente para pesquisar e identificar imagens e contêineres do Docker.  Para ver os rótulos aplicados a qualquer imagem usando o comando **[docker image inspect]**.
+    ```
+    LABEL "maintainer"=$email
+    LABEL "rating"="Five Stars" "class"="First Class"
+    ```
+O Docker executa todos os processos como root dentro do contêiner, mas você pode usar a instrução **USER** para alterar isso:
+    ```
+    USER root
+    ```
+
+Ao contrário da instrução **ARG**, a instrução **ENV** permite definir variáveis ​​de shell que podem ser usadas pela aplicação em execução para configuração, além de estarem disponíveis durante o processo de construção. As instruções ENV e ARG podem ser usadas para simplificar o Dockerfile e ajudar a mantê-lo mais SECO (Não se repita):
+    ```
+    ENV AP /data/app
+    ENV SCPATH /etc/supervisor/conf.d
+    ```
+No código a seguir, você usará uma coleção de instruções **RUN** dependências: para iniciar e criar a estrutura de arquivos necessária e instalar alguns softwares necessários.
+    ```
+    RUN apt-get -y update
+
+    # The daemons
+    RUN apt-get -y install supervisor
+    RUN mkdir -p /var/log/supervisor
+    ```
+Embora estejamos demonstrando isso aqui para simplificar, não é recomendado que você execute comandos como apt-get -y update ou dnf -y update no do seu aplicativo.
+
+A instrução **COPY** é usada para copiar arquivos do sistema de arquivos local para sua imagem. Na maioria das vezes, isso incluirá o código do seu aplicativo e quaisquer arquivos de suporte necessários. Como COPY copia os arquivos na imagem, você não precisa mais acessar o sistema de arquivos local para acessá-los depois que a imagem for construída. Você também começará a usar as variáveis ​​de construção definidas na seção anterior para poupar um pouco de trabalho e ajudar a protegê-lo contra erros de digitação:
+    ```
+    # Supervisor Configuration
+    COPY ./supervisord/conf.d/* $SCPATH/
+
+    # Application Code
+    COPY *.js* $AP/
+    ```
+
+Lembre-se de que cada instrução cria uma nova camada de imagem Docker, por isso geralmente faz sentido combinar alguns comandos agrupados logicamente em uma única linha. É ainda possível usar a instrução COPY em combinação com a instrução RUN para copiar um script complexo para sua imagem e então executar esse script com apenas dois comandos no Dockerfile.
+
+Com a instrução **WORKDIR** as instruções de compilação restantes, você altera o diretório de trabalho na imagem para  o processo padrão que é iniciado com quaisquer contêineres resultantes.
+    ```
+    WORKDIR $AP
+
+    RUN npm install
+    ```
+A ordem dos comandos em um Dockerfile pode ter um impacto muito significativo nos tempos de construção contínuos. Você deve tentar ordenar os comandos para que as coisas que mudam entre cada construção fiquem mais próximas do final. Isso significa que a adição de seu código e etapas semelhantes devem ser adiadas até o final. Ao reconstruir uma imagem, cada camada após a primeira alteração introduzida precisará ser reconstruída.
+
+E finalmente, você termina com a instrução **CMD**, que define o comando que inicia o processo que você deseja executar dentro do contêiner:
+    ```
+    CMD ["supervisord", "-n"]
+    ```
+Embora não seja uma regra rígida, geralmente é considerada uma prática recomendada tentar executar apenas um único processo dentro de um contêiner. A ideia central é que um contêiner forneça uma única função para que seja fácil dimensionar horizontalmente funções individuais dentro de sua arquitetura.
+
+O arquivo .dockerignore permite definir arquivos e diretórios que você não deseja enviar para o host Docker ao construir a imagem. Neste caso, o arquivo .dockerignore contém a seguinte linha:[.git]
+
+O diretório supervisord contém os arquivos de configuração do supervisord que você usará para iniciar e monitorar o aplicativo.
+Usar supervisord neste exemplo para monitorar o aplicativo é um exagero, mas seu objetivo é fornecer alguns insights sobre algumas das técnicas que você pode usar em um contêiner para fornecer mais controle sobre seu aplicativo e sua execução estado.
+
+No final do comando build, você notará um ponto final. Isso se refere ao contexto de construção, que informa ao Docker quais arquivos ele deve enviar para o servidor para que possa construir nossa imagem. Em muitos casos, você simplesmente verá um . no final de um comando build, já que um único ponto representa o diretório atual. Este contexto de construção é o que o arquivo .dockerignore está filtrando para que não carreguemos mais do que o necessário.
+
+O Docker assume que o Dockerfile está no diretório atual, mas se não estiver, você pode apontar diretamente para ele usando o argumento -f.
+
+    ```
+        docker image build -t example/docker-node-hello:latest .
+    ```
+
+Usar **[docker image build]** é funcionalmente igual a usar **[docker build]**.
+
+- **obs**:  A **flag -t** no comando **docker image build** é usada para **especificar um nome e uma tag para a imagem Docker** que está sendo construída. A flag -t significa "tag" e é seguida pelo nome da imagem e pela tag.
+
+    ```
+        docker container run --rm -d -p 8080:8080 example/docker-node-hello:latest
+    ```
+
+Este comando diz ao Docker para criar um contêiner em execução em segundo plano a partir da imagem com a tag example/docker-node-hello:latest e, em seguida, mapear a porta 8080 no contêiner para a porta 8080 no host Docker . Se tudo correr conforme o esperado, o novo aplicativo Node.js deverá estar sendo executado em um contêiner no host. Para verificar 
+
+    ```
+        docker container ls // ou  docker ps
+    ```
+
+O **[docker container ls]** é usado para listar os containers Docker em execução no seu sistema. No entanto, o comando mais moderno e recomendado é **[docker ps]**, que é equivalente ao docker container ls. Ambos os comandos fazem a mesma coisa.
+
+
+    ```
+        docker container ls -a // ou  docker ps -a
+    ```
+Esse comando exibirá todos os containers, independentemente do seu estado (em execução, parado, etc.).
+
+Geralmente, você pode determinar o endereço IP do host Docker examinando a entrada da **[docker context list]** que está marcada com um asterisco ou verificando o valor da variável de ambiente DOCKER_HOST se isso acontecer ser definido. Se o DOCKER ENDPOINT estiver configurado para um soquete Unix, então o endereço IP provavelmente será 127.0.0.1:
+
+Obtenha o endereço IP e digite algo como http://127.0.0.1:8080/ (ou seu endereço Docker remoto, se for diferente) na barra de endereços do seu navegador ou use uma linha de comando ferramenta como curl. Você deverá ver o seguinte texto:
+
+- Hello World. Wish you were here.
+
+Se quiséssemos alterar o rótulo maintainer, poderíamos simplesmente executar novamente a compilação e fornecer um novo valor para o emailARG através do [--build-arg] argumento de linha de comando, assim:
+    ```
+        docker image build --build-arg email="me@example.com" -t example/docker-node-hello:latest .
+    ```
+Após a conclusão da construção, podemos verificar os resultados reinspecionando a nova imagem:
+    ```
+    docker image inspect example/docker-node-hello:latest | grep maintainer 
+    ```
+
+- docker container ls (para pegar o id do container)
+
+    ```
+        docker container stop [id]
+    ```
+
+- Usar **[docker container ls]** é funcionalmente equivalente a usar **[docker container list]**, **[docker container ps]** ou **[docker ps]**
+- Usar **[docker container stop]** também é funcionalmente equivalente a usar **[docker stop]**.
+
+#### Variáveis ​​de ambiente como configuração
+
+Podemos reiniciar o container após adicionar uma única instância do argumento --env ao comando docker container run anterior
+
+
+    ```
+        docker run --rm -d --publish mode=ingress,published=8080,target=8080 --env WHO="Angelo Souza" example/docker-node-hello:latest
+    ```
+E a menssagem será: **Hello Angelo Souza. Wish you were here.**
+
+Você pode encurtar o comando docker anterior para o seguinte, se desejar:
+
+    ```
+        docker run --rm -d -p 8080:8080 --env WHO="Angelo Souza" example/docker-node-hello:latest
+    ```
+
+O Alpine Linux é altamente otimizado para espaço, razão pela qual ele vem com /bin/sh em vez de /bin/bash, por padrão. No entanto, você também pode instalar glibc e bash no Alpine Linux se precisar, e isso geralmente é feito no caso de contêineres JVM.
